@@ -4,13 +4,13 @@
 结合我以前的项目经验，汇总了一下MySQL的调优方法如下。目前的高一系统的数据访问层和MySQL基础设施尚有大量优化余地， 可以参考本文执行。
 
 ## 一．SQL优化
-###1. 自动杀掉慢查询语句
+### 1. 自动杀掉慢查询语句
 使用参数max_statement_time控制SQL执行SQL执行时间(单位: 秒)。默认值0，表示不限制SQL执行时间。
 ```
 举例：set global max_statement_time=1; #由MySQL自动杀死超过1s的慢查询语句。
 ```
 
-###2. 避免子查询
+### 2. 避免子查询
 尽量不要编写子查询，虽然MySQL 5.6开始有内部的优化器将子查询改写为关联查询，但这个改写过程总有些开销。比如如下语句在5.5版本性能很差(5.5版本MySQL会先全表扫描外表，每条外表数据会传到内表与之关联，外表如果记录数多，性能就差)。
 ```mysql
 Select CountryId, CountryName, Continent,Code from Country where Continent='Europe'and Country.Code in (select City.country from City where City,Population>1*1000*1000);
@@ -23,10 +23,10 @@ Where City.Population>1*1000*1000) b on a.Code=b.Country where a.Continent='Euro
 注： 执行指令show variables like **'optimizer_switch'**; 可以查询优化器开关。半连接优化器默认开启。
 注：半连接优化器仅对查询sql有效，对于update/delete的子查询仍旧需要人工修改。
 
-###3. 避免select *语句
+### 3. 避免select *语句
 这个不用多说，对于字段数多的表优化效果显著。
 
-###4. 派生子查询优化
+### 4. 派生子查询优化
 从MySQL 5.6开始具备此内部优化器功能。
 > 4.1 派生表合并优化<br/>
 如下SQL有性能问题：
@@ -48,7 +48,7 @@ explain select * from sbtest a, (select sum(id) id from sbtest group by k) b whe
 查看执行结果，可以看到为子查询对应的临时表自动创建了索引。
 MySQL 5.7遇到这一场景无需再人工优化SQL。
 
-###5. 避免IN语句
+### 5. 避免IN语句
 类似如下IN语句在MySQL 5.6以前版本是得不到优化的。
 ```mysql
 Select * from sbtest where (id,k) in((11,0), (12,1), (13,2), (14,3), (15,4));
@@ -59,7 +59,7 @@ Select * from sbtest where (id,k) in((11,0), (12,1), (13,2), (14,3), (15,4));
 Select * from sbtest where (id=11 and k=0) or (id=12 and k=1) or (id=13 and k=2) or (id=14 and k=3) or  (id=15 and k=4)
 ```
 
-###6. Delete/Update IN子句优化
+### 6. Delete/Update IN子句优化
 in 子句同样可以用left join来代替，提升性能。
 如下SQL:
 ```mysql
@@ -74,7 +74,7 @@ delete from t1 join (select id from t2 where id<5) tmp on t1.id=tmp.id;
 delete from t1 where exists(select t2.id from t2 where t2.id=t1.id and t2.id<5)
 ```
 
-###7. 模式匹配like '%xxx%'的优化
+### 7. 模式匹配like '%xxx%'的优化
 在MySQL中, like 'xxx%'子句可以用到索引，但'%xxx%'不行。除了使用[全文索引](http://172.16.9.14:8090/pages/viewpage.action?pageId=19989244)外，还可以用覆盖索引优化。
 比如SQL: 
 ```mysql
@@ -86,7 +86,7 @@ select * from artist where name like '%king%';
 select * from artist a join (select artist_id from artist where name like '%king%') b on a.artist_id=b.artist_id.
 ```
 
-###8. Limit分页的优化
+### 8. Limit分页的优化
 如下SQL:
 ```mysql
 Select * from test1 order by id limit 99999,10;
@@ -98,7 +98,7 @@ Select * from test1 order by id where id>=100000 order by id limit 10;
 ```
 以上SQL利用id索引直接定位到第100000行，再向后扫描10行，相当于一个range范围扫描。性能提升不少。
 
-###9.	使用表内连接进行Limit分页的优化
+### 9.	使用表内连接进行Limit分页的优化
 如下SQL:
 ```mysql
 Select id,title,createdate from test1 order by createdate asc limit 100000,10;
@@ -109,7 +109,7 @@ Select a.id, a.title,a.createdate from test1 a join (select id from test1 order 
 ```
 优化的思路是先取出99999行后面的1条记录的id，再用表内连接的方法取出后面10条。
 
-###10.	注意查询字段类型匹配
+### 10.	注意查询字段类型匹配
 如SQL:  
 ```mysql
 Select * from sbtest where id = '1';
@@ -119,7 +119,7 @@ Select * from sbtest where id = '1';
 Select * from sbtest where id=1.
 ```
 
-###11.	Union All优化
+### 11.	Union All优化
 Mysql 5.7中， union all不再创建一张临时表，这在执行大的联合查询中会减少I/O开销，提升查询速度。但对union语句和在最外层使用order by的语句无效。
 如下SQL不会产生临时表。
 ```mysql
@@ -131,7 +131,7 @@ Mysql 5.7中， union all不再创建一张临时表，这在执行大的联合�
 (Select id from t1 order by id) union all (select id from sbtest where k=0 order by id) order by id desc;
 ```
 
-###12. Or子句优化
+### 12. Or子句优化
 如下SQL: 
 ```mysql
 Select * from city where category='A'or category='B'
@@ -141,7 +141,7 @@ Select * from city where category='A'or category='B'
 (Select * from city where category='A') union all (Select * from city where category='B' )
 ```
 
-###13. Count(*)优化
+### 13. Count(*)优化
 Count(辅助索引)性能优于count(*)
 如下sql:
 ```mysql
@@ -152,7 +152,7 @@ Select count(*) from up_user
 Select count(*) from up_user where sid>=0;
 ```
 
-###14. ON DUPLICATE KEY UPDATE优化
+### 14. ON DUPLICATE KEY UPDATE优化
 MySQL有一种高效的主键冲突判断功能，即冲突时执行update, 不冲突时执行insert逻辑。如下所示：
 ```mysql
 INSERT INTO up_relation(ownerId, contactId, isBuddy, isChatFriend, isBlackList) VALUES('001','CTS001',1,0,0) 
@@ -160,7 +160,7 @@ ON DUPLICATE KEY UPDATE IsBuddy=1, IsChatFriend=0
 ```
 注：这种操作必须是基于主键或者唯一索引的操作。
 
-###15. 不必要的SQL子句
+### 15. 不必要的SQL子句
 #### 15.1 不必要的order by子句
 ```mysql
 Select count(1) as rs_count from a where a.content like 'rc%' order by a.title.
@@ -188,7 +188,7 @@ ON PL.pid=PR.pid AND PL.request_date=PR.request_date
 Select pid, MIN(request_date) request_date,bean_total FROM paybean_success GROUP BY pid
 ```
 
-###16.	避免使用having语句
+### 16.	避免使用having语句
 Having子句只会在检索出所有记录后再执行一次过滤，这个处理需要排序，总计等操作，不建议使用。优化方法是通过where子句过滤记录数目，就能减少这方面的开销。
 如下SQL:
 ```mysql
@@ -200,7 +200,7 @@ Select * from sbtest where id>40 group by id limit 3
 ```
 一般情况，having子句中的条件用于对一些集合函数的比较，如count()等，除此之外，都应该写在where子句中。
 
-###17.	合理使用索引
+### 17.	合理使用索引
 #### 17.1 联合索引替换单一索引
 MySQL会根据where子句后的查询字段来判断最优使用哪个索引。如果有多个查询字段，则会优先使用联合索引。
 #### 17.2 字段使用函数，将无法使用索引
@@ -231,7 +231,7 @@ Select * from t1 where pid=123456 order by change_date
 其中pid已经建立了索引，而一条sql只能使用一个最优索引，因此在change_date上增加一个索引没有意义。优化的方法是在pid,change_date上建立联合索引。这样可以避免using firesort排序。
 此外，order by子句后的字段顺序要一致，即要么全部升序，要么全部降序。
 
-###18. MRR优化
+### 18. MRR优化
 MySQL 5.6开始，增加了MRR(Multi-Range Read)功能, 如下SQL语句，优化器会先扫描索引，然后收集每行的主键，再对主键排序，然后用主键顺序访问基表，即用顺序I/O代替随机I/O.
 ```mysql
 Select * from t1 where i2>2000 and i2 < 4000;
@@ -239,14 +239,14 @@ Select * from t1 where i2>2000 and i2 < 4000;
 指令show variables like 'optimizer_switch' 可以查询优化器开关状态，如下图所示，默认mrr开关是开启的。
  ![](./images/1.png)
 
-###19. Index Merge优化
+### 19. Index Merge优化
 MySQL 5.6开始，如下语句可以使用索引合并, 假设在字段a和b上分别建立了索引。
 ```mysql
 Select * from t where a=1 or b=10; 
 ```
 注：如果查询条件里包含三个或三个以上索引则用不上索引合并优化。这一优化开关默认是开启的。
 
-###20. ICP优化
+### 20. ICP优化
 MySQL 5.6开始，提供了ICP(Index Condition Pushdown)功能, 如下SQL语句会激活此功能。
 ```mysql
 Select * from student where class=1 and score>60;
